@@ -1,6 +1,5 @@
 import telebot
 from text_responses import *
-
 from telebot import types
 
 with open('token.txt', 'r') as token_file:
