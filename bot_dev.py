@@ -3,7 +3,9 @@ from text_responses import *
 
 from telebot import types
 
-TOKEN = '2125399793:AAFWEjDTdXVPkerpBXp4JzMuTwNWKeURTYU'
+with open('token.txt', 'r') as token_file:
+    TOKEN = token_file.read()
+
 bot = telebot.TeleBot(TOKEN)
 
 
@@ -31,5 +33,6 @@ def get_user_text(message):
         bot.send_message(message.chat.id, text_responses[message.text], parse_mode='html')
     else:
         bot.send_message(message.chat.id, 'Нужно выбрать из перечисленный вариантов!', parse_mode='html')
+
 
 bot.polling(none_stop=True)
