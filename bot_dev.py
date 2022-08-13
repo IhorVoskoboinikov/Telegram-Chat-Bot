@@ -1,9 +1,13 @@
 import telebot
 from text_responses import *
 from telebot import types
+import peewee
+import csv
 
 with open('token.txt', 'r') as token_file:
     TOKEN = token_file.read()
+
+excel_data = pd.read_excel('base_cards.xlsx')
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -27,11 +31,29 @@ def start(message):
 
 @bot.message_handler(content_types=['text'])
 def get_user_text(message):
-    if message.text in ['Общая информация', 'Клубные карты', 'Записаться на тренировку', 'Время работы клуба',
+    if message.text in ['Общая информация', 'Записаться на тренировку', 'Время работы клуба',
                         'Связаться с менеджером']:
         bot.send_message(message.chat.id, text_responses[message.text], parse_mode='html')
+    elif message.text == 'Клубные карты':
+        bot.send_message(message.chat.id, excel_data, parse_mode='html')
     else:
         bot.send_message(message.chat.id, 'Нужно выбрать из перечисленный вариантов!', parse_mode='html')
 
 
 bot.polling(none_stop=True)
+
+database = peewee.SqliteDatabase("club_cards.db")
+
+
+class BaseTable(peewee.Model):
+    class Meta:
+        database = database
+
+
+class ClubCards(BaseTable):
+    title = peewee.CharField()
+    validity = peewee.CharField()
+    price = peewee.CharField()
+
+
+ClubCards.create_table()
