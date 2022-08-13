@@ -2,7 +2,7 @@ import telebot
 from text_responses import *
 from telebot import types
 import peewee
-import csv
+import pandas as pd
 
 with open('token.txt', 'r') as token_file:
     TOKEN = token_file.read()
