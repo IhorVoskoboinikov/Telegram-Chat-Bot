@@ -4,6 +4,7 @@ from telebot import types
 import peewee
 import pandas as pd
 import datetime
+from datetime import timedelta
 
 with open('token.txt', 'r') as token_file:
     TOKEN = token_file.read()
@@ -12,9 +13,7 @@ bot = telebot.TeleBot(TOKEN)
 database = peewee.SqliteDatabase("clients.db")
 _client_choice = []
 _club_card_to_save = {}
-_user_name = None
-_user_club_cards = None
-_user_buy_card = None
+_users_buy_card = {}
 
 
 class BaseTable(peewee.Model):
@@ -23,29 +22,42 @@ class BaseTable(peewee.Model):
 
 
 class ClubCards(BaseTable):
+    user_id = peewee.IntegerField()
     name = peewee.CharField()
     title = peewee.CharField()
     validity = peewee.IntegerField()
     price = peewee.IntegerField()
-    date = peewee.DateTimeField()
+    date_of_buy = peewee.DateTimeField()
+    date_of_the_end = peewee.DateTimeField()
 
 
 ClubCards.create_table()
 
 
-@bot.message_handler(commands=['start'])  # старт работы бота
-def start(message):
-    global _user_name, _user_club_cards
-    _user_name = f'{message.from_user.first_name} {message.from_user.last_name}'
-    if not message.from_user.last_name:
-        _user_name = f'{message.from_user.first_name}'
+def user_name(first_name, last_name):  # функция проверки и присвоения имени пользователя
+    user_name = f'{first_name} {last_name}'
+    if not last_name:
+        user_name = f'{first_name}'
+    return user_name
+
+
+def user_cards_in_db(user_id):  # функция проверки наличия абонементов в базе
     _user_club_cards = f'У вас нет действующих абонементов!'
     for clients in ClubCards.select():
-        if _user_name in clients.name:
-            _user_club_cards = f'У Вас есть действующий абонемент - {clients.title}\nСрок: {clients.validity}' \
-                               f' от даты покупки\nДата покупки: {clients.date}'
+        if user_id == clients.user_id:
+            _user_club_cards = f'У Вас есть действующий абонемент - {clients.title}\n' \
+                               f'Дата покупки: {clients.date_of_buy}\n' \
+                               f'Срок действия до: {clients.date_of_the_end}\n' \
+                               f'Стоимость: {clients.price} грн.'
+    return _user_club_cards
+
+
+@bot.message_handler(commands=['start'])  # старт работы бота
+def start(message):
+    _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
+    _user_club_cards = user_cards_in_db(user_id=message.from_user.id)
     mess = f'Привет, {_user_name}! \n' \
-           f'Это фитнес клуб "Tsarsky City Resort "!\n\n' \
+           f'Это фитнес клуб "X-GUM"!\n\n' \
            f'Мы рады что ты выбрал именно нас для улучшения своей физической формы!\n\n' \
            f'Мы готовы ответить на все твои вопросы, выбери раздел:'
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)  # создаем главное меню
@@ -60,7 +72,9 @@ def start(message):
 
 @bot.message_handler(content_types=['text'])  # обработка текстовых запросов от пользователя
 def get_user_text(message):
-    global _user_buy_card
+    global _users_buy_card
+    _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
+    _user_club_cards = user_cards_in_db(user_id=message.from_user.id)
     df = pd.read_excel('base_cards.xlsx')  # чтение абонементов из Excel заполняются менеджером
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     if message.text in ['Общая информация', 'Записаться на тренировку', 'Время работы клуба',
@@ -79,15 +93,20 @@ def get_user_text(message):
             _client_choice.append(f"{i.title}: Срок-{i.validity} дней, цена-{i.price} грн")
         bot.send_message(message.chat.id, mess, reply_markup=markup)
     elif message.text in _client_choice:  # подтверждение о покупке
-        _user_buy_card = message.text
+        _users_buy_card[message.from_user.id] = message.text
         restart = '/start'
         i_agree = 'Купить абонемент'
         markup.add(restart, i_agree)
-        mess = f'{_user_name}, вы подтверждаете покупку? Так как ваш действующий абонемент аннулируется!\n' \
-               f'Если вы подтверждаете нажмине - "Купить абонемент"\n' \
+        mess = f'{_user_name}, вы подтверждаете покупку? ' \
+               f'Так как ваш действующий абонемент аннулируется!\n' \
+               f'Если вы подтверждаете нажмите - "Купить абонемент"\n' \
                f'Для перехода в главное меню нажмите кнопку start!\n\n' \
                f'Через главное меню, вы можете связаться с менеджером ' \
                f'для уточнения деталей по вашему действующему абонементу!'
+        if _user_club_cards == f'У вас нет действующих абонементов!':
+            mess = f'{_user_name}, вы подтверждаете покупку?\n' \
+                   f'Если ДА нажмите - "Купить абонемент"\n' \
+                   f'Для перехода в главное меню нажмите кнопку start!'
         bot.send_message(message.chat.id, mess, reply_markup=markup)
 
     elif message.text == 'Купить абонемент':
@@ -97,23 +116,30 @@ def get_user_text(message):
             if _user_name == clients.name:
                 clients.delete_instance()
         for i in df.itertuples():
-            if i.title in _user_buy_card:  # создание данных для записи в базу
+            if i.title in _users_buy_card[message.from_user.id]:  # создание данных для записи в базу
+                date = datetime.datetime.now()
+                date_end = date + (timedelta(i.validity))
+                _club_card_to_save['user_id'] = f'{message.from_user.id}'
                 _club_card_to_save['name'] = f'{_user_name}'
                 _club_card_to_save['title'] = i.title
                 _club_card_to_save['validity'] = i.validity
                 _club_card_to_save['price'] = i.price
-                date = datetime.datetime.now()
-                _club_card_to_save['date'] = date.strftime("%d.%m.%Y")
+                _club_card_to_save['date_of_buy'] = date.strftime("%d.%m.%Y")
+                _club_card_to_save['date_of_the_end'] = date_end.strftime("%d.%m.%Y")
         mess = f'{_user_name}, спасибо за ваш выбор!\n' \
                f'Ваш абонемент - {_club_card_to_save["title"]}\n' \
-               f'Срок действия - {_club_card_to_save["validity"]}\n' \
-               f'Дата покупки - {_club_card_to_save["date"]}\n\n' \
+               f'Стоимость - {_club_card_to_save["price"]}\n' \
+               f'Дата покупки - {_club_card_to_save["date_of_buy"]}\n' \
+               f'Действует до - {_club_card_to_save["date_of_the_end"]}\n\n' \
                f'Для перехода в главное меню нажмите кнопку start!'
         bot.send_message(message.chat.id, mess, reply_markup=markup)
         client_in_db = ClubCards.insert_many(_club_card_to_save).execute()  # запись купленного абонемента в базу
+        del _users_buy_card[message.from_user.id]
         for clients in ClubCards.select():  # чтение данных из базы
-            print(f'Имя: {clients.name} | Абонемент: {clients.title} | Срок: {clients.validity} | '
-                  f'Стоимость:{clients.price} | Дата покупки: {clients.date}')
+            print(f'ID: {clients.user_id} | Имя: {clients.name} | '
+                  f'Абонемент: {clients.title} | Срок: {clients.validity} | '
+                  f'Стоимость:{clients.price} | Дата покупки: {clients.date_of_buy} | '
+                  f'Действует до: {clients.date_of_the_end}')
     else:
         restart = '/start'
         markup.add(restart)
