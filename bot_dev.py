@@ -58,8 +58,8 @@ def start(message):
     _user_club_cards = user_cards_in_db(user_id=message.from_user.id)
     mess = f'Привет, {_user_name}! \n' \
            f'Это фитнес клуб "X-GUM"!\n\n' \
-           f'Мы рады что ты выбрал именно нас для улучшения своей физической формы!\n\n' \
-           f'Мы готовы ответить на все твои вопросы, выбери раздел:'
+           f'Мы рады что Вы выбрали именно нас для улучшения своей физической формы!\n\n' \
+           f'Мы готовы ответить на все Ваши вопросы, выберите раздел:'
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)  # создаем главное меню
     general_information = types.KeyboardButton('Общая информация')
     clubs_card = types.KeyboardButton('Клубные карты')
@@ -98,15 +98,15 @@ def get_user_text(message):
         i_agree = 'Купить абонемент'
         markup.add(restart, i_agree)
         mess = f'{_user_name}, вы подтверждаете покупку? ' \
-               f'Так как ваш действующий абонемент аннулируется!\n' \
-               f'Если вы подтверждаете нажмите - "Купить абонемент"\n' \
+               f'Так как Ваш действующий абонемент аннулируется!\n' \
+               f'Если Вы подтверждаете нажмите - "Купить абонемент"\n' \
                f'Для перехода в главное меню нажмите кнопку start!\n\n' \
-               f'Через главное меню, вы можете связаться с менеджером ' \
+               f'Через главное меню, Вы можете связаться с менеджером ' \
                f'для уточнения деталей по вашему действующему абонементу!'
-        if _user_club_cards == f'У вас нет действующих абонементов!':
+        if _user_club_cards == f'У Вас нет действующих абонементов!':
             mess = f'{_user_name}, вы подтверждаете покупку?\n' \
                    f'Если ДА нажмите - "Купить абонемент"\n' \
-                   f'Для перехода в главное меню нажмите кнопку start!'
+                   f'Для перехода в главное меню нажмите кнопку "start!"'
         bot.send_message(message.chat.id, mess, reply_markup=markup)
 
     elif message.text == 'Купить абонемент':
@@ -126,9 +126,9 @@ def get_user_text(message):
                 _club_card_to_save['price'] = i.price
                 _club_card_to_save['date_of_buy'] = date.strftime("%d.%m.%Y")
                 _club_card_to_save['date_of_the_end'] = date_end.strftime("%d.%m.%Y")
-        mess = f'{_user_name}, спасибо за ваш выбор!\n' \
+        mess = f'{_user_name}, спасибо за Ваш выбор!\n' \
                f'Ваш абонемент - {_club_card_to_save["title"]}\n' \
-               f'Стоимость - {_club_card_to_save["price"]}\n' \
+               f'Стоимость - {_club_card_to_save["price"]} грн.\n' \
                f'Дата покупки - {_club_card_to_save["date_of_buy"]}\n' \
                f'Действует до - {_club_card_to_save["date_of_the_end"]}\n\n' \
                f'Для перехода в главное меню нажмите кнопку start!'
@@ -143,7 +143,8 @@ def get_user_text(message):
     else:
         restart = '/start'
         markup.add(restart)
-        mess = 'Выбор можно делать только по перечисленным вариантам. Для перехода в главное меню нажмите кнопку start!'
+        mess = 'Выбор можно делать только по перечисленным вариантам. ' \
+               'Для перехода в главное меню нажмите кнопку "start!"'
         bot.send_message(message.chat.id, mess, reply_markup=markup)
 
 
