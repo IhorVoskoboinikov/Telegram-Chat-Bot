@@ -16,6 +16,7 @@ _user_name = None
 _user_club_cards = None
 _user_buy_card = None
 
+
 class BaseTable(peewee.Model):
     class Meta:
         database = database
@@ -92,7 +93,7 @@ def get_user_text(message):
     elif message.text == 'Купить абонемент':
         restart = '/start'
         markup.add(restart)
-        for clients in ClubCards.select():  # чтение данных из базы
+        for clients in ClubCards.select():  # удаление действующих абонементов из базы
             if _user_name == clients.name:
                 clients.delete_instance()
         for i in df.itertuples():
