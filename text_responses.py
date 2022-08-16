@@ -13,4 +13,4 @@ text_responses = {
 }
 
 if __name__ == '__main__':
-    print("OK")
+    pass
