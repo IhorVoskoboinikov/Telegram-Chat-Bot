@@ -1,5 +1,5 @@
 import telebot
-from masseges import *
+import messages
 from telebot import types
 import peewee
 import pandas as pd
@@ -42,7 +42,7 @@ def user_name(first_name, last_name):  # функция проверки и пр
 
 
 def user_cards_in_db(user_id):  # функция проверки наличия абонементов в базе
-    _user_club_cards = USER_NO_ACCOUNT_MESSAGE
+    _user_club_cards = messages.USER_NO_ACCOUNT_MESSAGE
     for clients in ClubCards.select():
         if user_id == clients.user_id:
             _user_club_cards = f'У Вас есть действующий абонемент - {clients.title}\n' \
@@ -56,7 +56,7 @@ def user_cards_in_db(user_id):  # функция проверки наличия
 def start(message):
     _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
     _user_club_cards = user_cards_in_db(user_id=message.from_user.id)
-    mess = f'{_user_name}, {GREETING_MESSAGE}'
+    mess = f'{_user_name}, {messages.GREETING_MESSAGE}'
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)  # создаем главное меню
     general_information = types.KeyboardButton('Общая информация')
     clubs_card = types.KeyboardButton('Клубные карты')
@@ -78,11 +78,11 @@ def get_user_text(message):
                         'Связаться с менеджером']:
         restart = '/start'
         markup.add(restart)
-        bot.send_message(message.chat.id, MAIN_MENU_MESSAGE[message.text], reply_markup=markup)
-        bot.send_message(message.chat.id, GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
+        bot.send_message(message.chat.id, messages.MAIN_MENU_MESSAGE[message.text], reply_markup=markup)
+        bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
     elif message.text == 'Клубные карты':  # меню клубных карт для покупки клиента
         _client_choice.clear()
-        mess = f"{_user_club_cards}\n\n{CHOICE_CLUB_CARD_MESSAGE}"
+        mess = f"{_user_club_cards}\n\n{messages.CHOICE_CLUB_CARD_MESSAGE}"
         for i in df.itertuples():
             abon_from_manadger = types.KeyboardButton(f"{i.title}: Срок-{i.validity} дней, цена-{i.price} грн")
             markup.add(abon_from_manadger)
@@ -93,9 +93,9 @@ def get_user_text(message):
         restart = '/start'
         i_agree = 'Купить абонемент'
         markup.add(restart, i_agree)
-        mess = f'{_user_name}, {CONFIRMATION_CLUB_CARD_IN_DB_MESSAGE}'
-        if _user_club_cards == USER_NO_ACCOUNT_MESSAGE:
-            mess = f'{_user_name}, {CONFIRMATION_CLUB_CARD_OUT_IN_DB_MESSAGE}'
+        mess = f'{_user_name}, {messages.CONFIRMATION_CLUB_CARD_IN_DB_MESSAGE}'
+        if _user_club_cards == messages.USER_NO_ACCOUNT_MESSAGE:
+            mess = f'{_user_name}, {messages.CONFIRMATION_CLUB_CARD_OUT_IN_DB_MESSAGE}'
         bot.send_message(message.chat.id, mess, reply_markup=markup)
 
     elif message.text == 'Купить абонемент':
@@ -133,7 +133,7 @@ def get_user_text(message):
     else:
         restart = '/start'
         markup.add(restart)
-        bot.send_message(message.chat.id, CHOICE_ERROR_MESSAGE, reply_markup=markup)
+        bot.send_message(message.chat.id, messages.CHOICE_ERROR_MESSAGE, reply_markup=markup)
 
 
 bot.polling(none_stop=True)
