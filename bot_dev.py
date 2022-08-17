@@ -1,5 +1,5 @@
 import telebot
-from text_responses import *
+from masseges import *
 from telebot import types
 import peewee
 import pandas as pd
@@ -42,7 +42,7 @@ def user_name(first_name, last_name):  # функция проверки и пр
 
 
 def user_cards_in_db(user_id):  # функция проверки наличия абонементов в базе
-    _user_club_cards = f'У вас нет действующих абонементов!'
+    _user_club_cards = USER_NO_ACCOUNT_MESSAGE
     for clients in ClubCards.select():
         if user_id == clients.user_id:
             _user_club_cards = f'У Вас есть действующий абонемент - {clients.title}\n' \
@@ -56,10 +56,7 @@ def user_cards_in_db(user_id):  # функция проверки наличия
 def start(message):
     _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
     _user_club_cards = user_cards_in_db(user_id=message.from_user.id)
-    mess = f'Привет, {_user_name}! \n' \
-           f'Это фитнес клуб "X-GUM"!\n\n' \
-           f'Мы рады что Вы выбрали именно нас для улучшения своей физической формы!\n\n' \
-           f'Мы готовы ответить на все Ваши вопросы, выберите раздел:'
+    mess = f'{_user_name}, {GREETING_MESSAGE}'
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)  # создаем главное меню
     general_information = types.KeyboardButton('Общая информация')
     clubs_card = types.KeyboardButton('Клубные карты')
@@ -81,12 +78,11 @@ def get_user_text(message):
                         'Связаться с менеджером']:
         restart = '/start'
         markup.add(restart)
-        mess = 'Для перехода в главное меню нажмите кнопку start!'
-        bot.send_message(message.chat.id, text_responses[message.text], reply_markup=markup)
-        bot.send_message(message.chat.id, mess, parse_mode='html')
+        bot.send_message(message.chat.id, MAIN_MENU_MESSAGE[message.text], reply_markup=markup)
+        bot.send_message(message.chat.id, GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
     elif message.text == 'Клубные карты':  # меню клубных карт для покупки клиента
         _client_choice.clear()
-        mess = f"{_user_club_cards}\n\nВыберите подходящий вам абонемент из ниже перечисленных:"
+        mess = f"{_user_club_cards}\n\n{CHOICE_CLUB_CARD_MESSAGE}"
         for i in df.itertuples():
             abon_from_manadger = types.KeyboardButton(f"{i.title}: Срок-{i.validity} дней, цена-{i.price} грн")
             markup.add(abon_from_manadger)
@@ -97,30 +93,24 @@ def get_user_text(message):
         restart = '/start'
         i_agree = 'Купить абонемент'
         markup.add(restart, i_agree)
-        mess = f'{_user_name}, вы подтверждаете покупку? ' \
-               f'Так как Ваш действующий абонемент аннулируется!\n' \
-               f'Если Вы подтверждаете нажмите - "Купить абонемент"\n' \
-               f'Для перехода в главное меню нажмите кнопку start!\n\n' \
-               f'Через главное меню, Вы можете связаться с менеджером ' \
-               f'для уточнения деталей по вашему действующему абонементу!'
-        if _user_club_cards == f'У Вас нет действующих абонементов!':
-            mess = f'{_user_name}, вы подтверждаете покупку?\n' \
-                   f'Если ДА нажмите - "Купить абонемент"\n' \
-                   f'Для перехода в главное меню нажмите кнопку "start!"'
+        mess = f'{_user_name}, {CONFIRMATION_CLUB_CARD_IN_DB_MESSAGE}'
+        if _user_club_cards == USER_NO_ACCOUNT_MESSAGE:
+            mess = f'{_user_name}, {CONFIRMATION_CLUB_CARD_OUT_IN_DB_MESSAGE}'
         bot.send_message(message.chat.id, mess, reply_markup=markup)
 
     elif message.text == 'Купить абонемент':
         restart = '/start'
         markup.add(restart)
         for clients in ClubCards.select():  # удаление действующих абонементов из базы
-            if _user_name == clients.name:
+            if message.from_user.id == clients.user_id:
+                # if clients.user_id == 292831791:
                 clients.delete_instance()
         for i in df.itertuples():
             if i.title in _users_buy_card[message.from_user.id]:  # создание данных для записи в базу
                 date = datetime.datetime.now()
                 date_end = date + (timedelta(i.validity))
-                _club_card_to_save['user_id'] = f'{message.from_user.id}'
-                _club_card_to_save['name'] = f'{_user_name}'
+                _club_card_to_save['user_id'] = message.from_user.id
+                _club_card_to_save['name'] = _user_name
                 _club_card_to_save['title'] = i.title
                 _club_card_to_save['validity'] = i.validity
                 _club_card_to_save['price'] = i.price
@@ -143,9 +133,7 @@ def get_user_text(message):
     else:
         restart = '/start'
         markup.add(restart)
-        mess = 'Выбор можно делать только по перечисленным вариантам. ' \
-               'Для перехода в главное меню нажмите кнопку "start!"'
-        bot.send_message(message.chat.id, mess, reply_markup=markup)
+        bot.send_message(message.chat.id, CHOICE_ERROR_MESSAGE, reply_markup=markup)
 
 
 bot.polling(none_stop=True)
