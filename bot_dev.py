@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+import threading
+import time
+import schedule
 import telebot
 import messages
 from telebot import types
@@ -52,11 +56,24 @@ def user_cards_in_db(user_id):  # функция проверки наличия
     return _user_club_cards
 
 
+def push_messages():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    contact_the_manager = types.KeyboardButton('Связаться с менеджером')
+    markup.add(contact_the_manager)
+    for clients in ClubCards.select():
+        today = datetime.datetime.now()
+        date_of_end_three_days = datetime.datetime.strptime(clients.date_of_the_end, '%d.%m.%Y')
+        if today.day == (date_of_end_three_days - (timedelta(3))).day:
+            mess = f'{clients.name} {messages.PUSH_MESSAGE_END_OF_THE_CARD} {clients.date_of_the_end}!'
+            bot.send_message(chat_id=clients.user_id, text=mess, disable_notification=True, reply_markup=markup)
+
+
 @bot.message_handler(commands=['start'])  # старт работы бота
 def start(message):
     _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
     _user_club_cards = user_cards_in_db(user_id=message.from_user.id)
     mess = f'{_user_name}, {messages.GREETING_MESSAGE}'
+    sticker = open('images/hello_sticker.webp', 'rb')
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)  # создаем главное меню
     general_information = types.KeyboardButton('Общая информация')
     clubs_card = types.KeyboardButton('Клубные карты')
@@ -64,6 +81,7 @@ def start(message):
     working_hours = types.KeyboardButton('Время работы клуба')
     contact_the_manager = types.KeyboardButton('Связаться с менеджером')
     markup.add(general_information, clubs_card, sign_up_for_a_workout, working_hours, contact_the_manager)
+    bot.send_sticker(message.chat.id, sticker)
     bot.send_message(message.chat.id, mess, reply_markup=markup)
 
 
@@ -101,6 +119,7 @@ def get_user_text(message):
     elif message.text == 'Купить абонемент':
         restart = '/start'
         markup.add(restart)
+        sticker = open('images/final_sticker.webp', 'rb')
         for clients in ClubCards.select():  # удаление действующих абонементов из базы
             if message.from_user.id == clients.user_id:
                 # if clients.user_id == 292831791:
@@ -122,6 +141,7 @@ def get_user_text(message):
                f'Дата покупки - {_club_card_to_save["date_of_buy"]}\n' \
                f'Действует до - {_club_card_to_save["date_of_the_end"]}\n\n' \
                f'Для перехода в главное меню нажмите кнопку start!'
+        bot.send_sticker(message.chat.id, sticker)
         bot.send_message(message.chat.id, mess, reply_markup=markup)
         client_in_db = ClubCards.insert_many(_club_card_to_save).execute()  # запись купленного абонемента в базу
         del _users_buy_card[message.from_user.id]
@@ -130,10 +150,26 @@ def get_user_text(message):
                   f'Абонемент: {clients.title} | Срок: {clients.validity} | '
                   f'Стоимость:{clients.price} | Дата покупки: {clients.date_of_buy} | '
                   f'Действует до: {clients.date_of_the_end}')
+
     else:
         restart = '/start'
         markup.add(restart)
         bot.send_message(message.chat.id, messages.CHOICE_ERROR_MESSAGE, reply_markup=markup)
 
 
-bot.polling(none_stop=True)
+def run_bot():
+    bot.polling(none_stop=True)
+
+
+def run_push_message():
+    schedule.every().day.at("06:00").do(push_messages)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    chat_bot = threading.Thread(target=run_bot)
+    push_mess = threading.Thread(target=run_push_message)
+    chat_bot.start()
+    push_mess.start()
