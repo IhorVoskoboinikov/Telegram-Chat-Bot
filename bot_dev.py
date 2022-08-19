@@ -9,6 +9,8 @@ import peewee
 import pandas as pd
 import datetime
 from datetime import timedelta
+from collections import defaultdict
+import calendar
 
 with open('token.txt', 'r') as token_file:
     TOKEN = token_file.read()
@@ -16,8 +18,11 @@ with open('token.txt', 'r') as token_file:
 bot = telebot.TeleBot(TOKEN)
 database = peewee.SqliteDatabase("clients.db")
 _client_choice = []
-_club_card_to_save = {}
+_club_card_to_save = defaultdict(dict)
 _users_buy_card = {}
+_names_of_trainings_set = set()
+_trainings_by_date = {}
+_trainings_to_records = defaultdict(list)
 
 
 class BaseTable(peewee.Model):
@@ -87,17 +92,35 @@ def start(message):
 
 @bot.message_handler(content_types=['text'])  # обработка текстовых запросов от пользователя
 def get_user_text(message):
-    global _users_buy_card
+    global _users_buy_card, _names_of_trainings_set
     _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
     _user_club_cards = user_cards_in_db(user_id=message.from_user.id)
     df = pd.read_excel('base_cards.xlsx')  # чтение абонементов из Excel заполняются менеджером
+    df_tr = pd.read_excel('trainings.xlsx')  # чтение абонементов из Excel заполняются менеджером
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    if message.text in ['Общая информация', 'Записаться на тренировку', 'Время работы клуба',
-                        'Связаться с менеджером']:
+    if message.text in ['Общая информация', 'Время работы клуба', 'Связаться с менеджером']:
         restart = '/start'
         markup.add(restart)
         bot.send_message(message.chat.id, messages.MAIN_MENU_MESSAGE[message.text], reply_markup=markup)
         bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
+
+    elif message.text == 'Записаться на тренировку':
+        mess = messages.CHOICE_TRAININGS_MESSAGE
+        _names_of_trainings_set = set((i.title) for i in df_tr.itertuples())
+        for y in _names_of_trainings_set:
+            trainings = types.KeyboardButton(y)
+            markup.add(trainings)
+        bot.send_message(message.chat.id, mess, reply_markup=markup)
+    elif message.text in _names_of_trainings_set:
+        for i in df_tr.itertuples():
+            if message.text == i.title:
+                training = types.KeyboardButton(f'{i.title}: {i.day_of_the_week} '
+                                                f'в {i.time.strftime("%H:%M")}')
+                markup.add(training)
+
+        mess = messages.CHOICE_TRAININGS_MESSAGE_2
+        bot.send_message(message.chat.id, mess, reply_markup=markup)
+
     elif message.text == 'Клубные карты':  # меню клубных карт для покупки клиента
         _client_choice.clear()
         mess = f"{_user_club_cards}\n\n{messages.CHOICE_CLUB_CARD_MESSAGE}"
@@ -117,34 +140,36 @@ def get_user_text(message):
         bot.send_message(message.chat.id, mess, reply_markup=markup)
 
     elif message.text == 'Купить абонемент':
+        user_id_to_dict = str(message.from_user.id)
         restart = '/start'
         markup.add(restart)
         sticker = open('images/final_sticker.webp', 'rb')
         for clients in ClubCards.select():  # удаление действующих абонементов из базы
             if message.from_user.id == clients.user_id:
-                # if clients.user_id == 292831791:
                 clients.delete_instance()
         for i in df.itertuples():
             if i.title in _users_buy_card[message.from_user.id]:  # создание данных для записи в базу
                 date = datetime.datetime.now()
                 date_end = date + (timedelta(i.validity))
-                _club_card_to_save['user_id'] = message.from_user.id
-                _club_card_to_save['name'] = _user_name
-                _club_card_to_save['title'] = i.title
-                _club_card_to_save['validity'] = i.validity
-                _club_card_to_save['price'] = i.price
-                _club_card_to_save['date_of_buy'] = date.strftime("%d.%m.%Y")
-                _club_card_to_save['date_of_the_end'] = date_end.strftime("%d.%m.%Y")
+                _club_card_to_save[user_id_to_dict]['user_id'] = message.from_user.id
+                _club_card_to_save[user_id_to_dict]['name'] = _user_name
+                _club_card_to_save[user_id_to_dict]['title'] = i.title
+                _club_card_to_save[user_id_to_dict]['validity'] = i.validity
+                _club_card_to_save[user_id_to_dict]['price'] = i.price
+                _club_card_to_save[user_id_to_dict]['date_of_buy'] = date.strftime("%d.%m.%Y")
+                _club_card_to_save[user_id_to_dict]['date_of_the_end'] = date_end.strftime("%d.%m.%Y")
         mess = f'{_user_name}, спасибо за Ваш выбор!\n' \
-               f'Ваш абонемент - {_club_card_to_save["title"]}\n' \
-               f'Стоимость - {_club_card_to_save["price"]} грн.\n' \
-               f'Дата покупки - {_club_card_to_save["date_of_buy"]}\n' \
-               f'Действует до - {_club_card_to_save["date_of_the_end"]}\n\n' \
+               f'Ваш абонемент - {_club_card_to_save[user_id_to_dict]["title"]}\n' \
+               f'Стоимость - {_club_card_to_save[user_id_to_dict]["price"]} грн.\n' \
+               f'Дата покупки - {_club_card_to_save[user_id_to_dict]["date_of_buy"]}\n' \
+               f'Действует до - {_club_card_to_save[user_id_to_dict]["date_of_the_end"]}\n\n' \
                f'Для перехода в главное меню нажмите кнопку start!'
         bot.send_sticker(message.chat.id, sticker)
         bot.send_message(message.chat.id, mess, reply_markup=markup)
-        client_in_db = ClubCards.insert_many(_club_card_to_save).execute()  # запись купленного абонемента в базу
+        client_in_db = ClubCards.insert_many(
+            _club_card_to_save[user_id_to_dict]).execute()  # запись купленного абонемента в базу
         del _users_buy_card[message.from_user.id]
+        del _club_card_to_save[user_id_to_dict]
         for clients in ClubCards.select():  # чтение данных из базы
             print(f'ID: {clients.user_id} | Имя: {clients.name} | '
                   f'Абонемент: {clients.title} | Срок: {clients.validity} | '
