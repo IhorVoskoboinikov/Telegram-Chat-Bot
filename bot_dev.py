@@ -10,6 +10,7 @@ import pandas as pd
 import datetime
 from datetime import timedelta
 from collections import defaultdict
+import re
 import calendar
 
 with open('token.txt', 'r') as token_file:
@@ -22,7 +23,7 @@ _club_card_to_save = defaultdict(dict)
 _users_buy_card = {}
 _names_of_trainings_set = set()
 _trainings_by_date = {}
-_trainings_to_records = defaultdict(list)
+_trainings_to_records = defaultdict(dict)
 
 
 class BaseTable(peewee.Model):
@@ -61,7 +62,7 @@ def user_cards_in_db(user_id):  # функция проверки наличия
     return _user_club_cards
 
 
-def push_messages():
+def push_messages():  # сообщение об окончании абонемента за 3 дня до конца
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     contact_the_manager = types.KeyboardButton('Связаться с менеджером')
     markup.add(contact_the_manager)
@@ -71,6 +72,19 @@ def push_messages():
         if today.day == (date_of_end_three_days - (timedelta(3))).day:
             mess = f'{clients.name} {messages.PUSH_MESSAGE_END_OF_THE_CARD} {clients.date_of_the_end}!'
             bot.send_message(chat_id=clients.user_id, text=mess, disable_notification=True, reply_markup=markup)
+
+
+def date_of_training(re_day):
+    obj = calendar.Calendar()
+    today = datetime.date.today()
+    dates = []
+    days = {'Понедельник': 0, 'Вторник': 1, 'Среда': 2, 'Четверг': 3, 'Пятница': 4, 'Суббота': 5, 'Воскресенье': 6}
+    for i in obj.itermonthdates(today.year, today.month):
+        if today <= i and i.month == today.month:
+            day = calendar.weekday(i.year, i.month, i.day)
+            if day == days[re_day.group()]:
+                dates.append(i)
+    return dates
 
 
 @bot.message_handler(commands=['start'])  # старт работы бота
@@ -93,10 +107,16 @@ def start(message):
 @bot.message_handler(content_types=['text'])  # обработка текстовых запросов от пользователя
 def get_user_text(message):
     global _users_buy_card, _names_of_trainings_set
+    user_id_to_dict = str(message.from_user.id)
+    day_pattern = r'Понедельник|Вторник|Среда|Четверг|Пятница|Суббота|Воскресенье'
+    time_pattern = r'[0-9]{2}:[0-9]{2}'
+    day_for_training = re.search(day_pattern, message.text)
+    time_for_training = re.search(time_pattern, message.text)
     _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
     _user_club_cards = user_cards_in_db(user_id=message.from_user.id)
     df = pd.read_excel('base_cards.xlsx')  # чтение абонементов из Excel заполняются менеджером
-    df_tr = pd.read_excel('trainings.xlsx')  # чтение абонементов из Excel заполняются менеджером
+    df_tr = pd.read_excel('trainings.xlsx')  # чтение тренировок из Excel заполняются менеджером
+    df_record = pd.read_excel('records.xlsx')  # чтение записей на тренировки из Excel
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     if message.text in ['Общая информация', 'Время работы клуба', 'Связаться с менеджером']:
         restart = '/start'
@@ -112,15 +132,59 @@ def get_user_text(message):
             markup.add(trainings)
         bot.send_message(message.chat.id, mess, reply_markup=markup)
     elif message.text in _names_of_trainings_set:
+        _trainings_to_records[user_id_to_dict]['training'] = message.text
         for i in df_tr.itertuples():
             if message.text == i.title:
+                _trainings_to_records[user_id_to_dict]['id_training'] = i.id_workout
                 training = types.KeyboardButton(f'{i.title}: {i.day_of_the_week} '
                                                 f'в {i.time.strftime("%H:%M")}')
                 markup.add(training)
-
         mess = messages.CHOICE_TRAININGS_MESSAGE_2
         bot.send_message(message.chat.id, mess, reply_markup=markup)
-
+    elif day_for_training:
+        print(day_for_training)
+        _trainings_to_records[user_id_to_dict]['day'] = day_for_training.group()
+        _trainings_to_records[user_id_to_dict]['time'] = time_for_training.group()
+        if not date_of_training(re_day=day_for_training):
+            mess = 'Нет доступных дат для записи в действующем месяце!'
+            bot.send_message(message.chat.id, mess)
+        else:
+            mess = messages.CHOICE_TRAININGS_MESSAGE_3
+            for i in date_of_training(day_for_training):
+                training_date = types.KeyboardButton(i.strftime("%d.%m.%Y"))
+                markup.add(training_date)
+            bot.send_message(message.chat.id, mess, reply_markup=markup)
+    elif _trainings_to_records[user_id_to_dict]['day']:
+        max_people = 0
+        signed_up_people = 0
+        restart = '/start'
+        markup.add(restart)
+        _trainings_to_records[user_id_to_dict]['date'] = message.text
+        for i in df_tr.itertuples():
+            if i.id_workout == _trainings_to_records[user_id_to_dict]['id_training']:
+                max_people = i.max_people
+        print(max_people)
+        print(signed_up_people)
+        for y in df_record.itertuples():
+            if y.user_id == _trainings_to_records[user_id_to_dict]['id_training'] and \
+                    y.time == _trainings_to_records[user_id_to_dict]['time'] and \
+                    y.date == _trainings_to_records[user_id_to_dict]['date']:
+                signed_up_people += 1
+        if max_people > signed_up_people:
+            df = pd.DataFrame({'user_id': [message.chat.id],
+                               'id_workout': [_trainings_to_records[user_id_to_dict]['id_training']],
+                               'date': [_trainings_to_records[user_id_to_dict]["date"]],
+                               'time': [_trainings_to_records[user_id_to_dict]["time"]]
+                               })
+            df.to_excel('records.xlsx', index=False)
+            mess = f'Вы записались на тренировку - {_trainings_to_records[user_id_to_dict]["training"]}!\n' \
+                   f'Ждем вас на тренировку {_trainings_to_records[user_id_to_dict]["date"]} в ' \
+                   f'{_trainings_to_records[user_id_to_dict]["time"]}'
+        else:
+            mess = messages.RECORD_FULL_MESSAGE
+        bot.send_message(message.chat.id, mess, reply_markup=markup)
+        bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, reply_markup=markup)
+        print(_trainings_to_records)
     elif message.text == 'Клубные карты':  # меню клубных карт для покупки клиента
         _client_choice.clear()
         mess = f"{_user_club_cards}\n\n{messages.CHOICE_CLUB_CARD_MESSAGE}"
@@ -129,7 +193,7 @@ def get_user_text(message):
             markup.add(abon_from_manadger)
             _client_choice.append(f"{i.title}: Срок-{i.validity} дней, цена-{i.price} грн")
         bot.send_message(message.chat.id, mess, reply_markup=markup)
-    elif message.text in _client_choice:  # подтверждение о покупке
+    elif message.text in _client_choice:  # подтверждение о покупке абонемента
         _users_buy_card[message.from_user.id] = message.text
         restart = '/start'
         i_agree = 'Купить абонемент'
@@ -138,7 +202,6 @@ def get_user_text(message):
         if _user_club_cards == messages.USER_NO_ACCOUNT_MESSAGE:
             mess = f'{_user_name}, {messages.CONFIRMATION_CLUB_CARD_OUT_IN_DB_MESSAGE}'
         bot.send_message(message.chat.id, mess, reply_markup=markup)
-
     elif message.text == 'Купить абонемент':
         user_id_to_dict = str(message.from_user.id)
         restart = '/start'
