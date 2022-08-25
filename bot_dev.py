@@ -12,6 +12,8 @@ from datetime import timedelta
 from collections import defaultdict
 import re
 import calendar
+from pandas.io.excel import ExcelWriter
+import os
 
 with open('token.txt', 'r') as token_file:
     TOKEN = token_file.read()
@@ -124,19 +126,19 @@ def get_user_text(message):
         bot.send_message(message.chat.id, messages.MAIN_MENU_MESSAGE[message.text], reply_markup=markup)
         bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
 
-    elif message.text == 'Записаться на тренировку':
+    elif message.text == 'Записаться на тренировку':  # Меню с перечнем доступных тренировок
         mess = messages.CHOICE_TRAININGS_MESSAGE
         _names_of_trainings_set = set((i.title) for i in df_tr.itertuples())
         for y in _names_of_trainings_set:
             trainings = types.KeyboardButton(y)
             markup.add(trainings)
         bot.send_message(message.chat.id, mess, reply_markup=markup)
-    elif message.text in _names_of_trainings_set:
+    elif message.text in _names_of_trainings_set:  # Меню с днем недели + время тренировки
         _trainings_to_records[user_id_to_dict]['training'] = message.text
         for i in df_tr.itertuples():
             if message.text == i.title:
                 _trainings_to_records[user_id_to_dict]['id_training'] = i.id_workout
-                training = types.KeyboardButton(f'{i.title}: {i.day_of_the_week} '
+                training = types.KeyboardButton(f'{i.day_of_the_week} '
                                                 f'в {i.time.strftime("%H:%M")}')
                 markup.add(training)
         mess = messages.CHOICE_TRAININGS_MESSAGE_2
@@ -171,12 +173,17 @@ def get_user_text(message):
                     y.date == _trainings_to_records[user_id_to_dict]['date']:
                 signed_up_people += 1
         if max_people > signed_up_people:
-            df = pd.DataFrame({'user_id': [message.chat.id],
-                               'id_workout': [_trainings_to_records[user_id_to_dict]['id_training']],
-                               'date': [_trainings_to_records[user_id_to_dict]["date"]],
-                               'time': [_trainings_to_records[user_id_to_dict]["time"]]
-                               })
-            df.to_excel('records.xlsx', index=False)
+            data_record = ({'user_id': message.chat.id,
+                            'id_workout': _trainings_to_records[user_id_to_dict]['id_training'],
+                            'date': _trainings_to_records[user_id_to_dict]["date"],
+                            'time': _trainings_to_records[user_id_to_dict]["time"]
+                            })
+            file_records = pd.read_excel('records.xlsx')
+            df = pd.DataFrame(file_records)
+            df_new = df.append(data_record, ignore_index=True)
+            with ExcelWriter('records.xlsx', mode='a' if os.path.exists('records.xlsx') else 'w',
+                             if_sheet_exists='replace') as writer:
+                df_new.to_excel(writer, index=False)
             mess = f'Вы записались на тренировку - {_trainings_to_records[user_id_to_dict]["training"]}!\n' \
                    f'Ждем вас на тренировку {_trainings_to_records[user_id_to_dict]["date"]} в ' \
                    f'{_trainings_to_records[user_id_to_dict]["time"]}'
