@@ -76,6 +76,23 @@ def push_messages():  # сообщение об окончании абонем�
             bot.send_message(chat_id=clients.user_id, text=mess, disable_notification=True, reply_markup=markup)
 
 
+def push_messages_workout_reminder():  # сообщение о записи на тренировку на завтра
+    df_record = pd.read_excel('records.xlsx')
+    df_tr = pd.read_excel('trainings.xlsx')
+    tomorrow = (datetime.date.today() + (timedelta(1))).strftime('%d.%m.%Y')
+    mess_0 = 'Добрый день!\n\nХотим напомнить, что завтра Вы записаны на тренировку:'
+    for i in df_record.itertuples():
+        if i.date == tomorrow:
+            if mess_0:
+                bot.send_message(chat_id=i.user_id, text=mess_0)
+                mess_0 = None
+            for y in df_tr.itertuples():
+                if i.id_workout == y.id_workout:
+                    mess = f'Тренировка - {y.title}\nВремя - {y.time}'
+                    bot.send_message(chat_id=i.user_id, text=mess)
+                    break
+
+
 def date_of_training(re_day):  # просчет всех выбранных дат до конца месяца
     obj = calendar.Calendar()
     today = datetime.date.today()
@@ -292,6 +309,7 @@ def run_bot():
 
 def run_push_message():
     schedule.every().day.at("06:00").do(push_messages)
+    schedule.every().day.at("11:16").do(push_messages_workout_reminder)
     while True:
         schedule.run_pending()
         time.sleep(1)
