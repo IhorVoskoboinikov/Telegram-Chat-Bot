@@ -26,6 +26,8 @@ _users_buy_card = {}
 _names_of_trainings_set = set()
 _trainings_by_date = {}
 _trainings_to_records = defaultdict(dict)
+_manager_id = 513981644
+_user_name_to_manager = {}
 
 
 class BaseTable(peewee.Model):
@@ -123,10 +125,10 @@ def start(message):
 
 @bot.message_handler(content_types=['text'])  # обработка текстовых запросов от пользователя
 def get_user_text(message):
-    global _users_buy_card, _names_of_trainings_set
+    global _users_buy_card, _names_of_trainings_set, _user_name_to_manager
     user_id_to_dict = str(message.from_user.id)
     day_of_week_pattern = r'Понедельник|Вторник|Среда|Четверг|Пятница|Суббота|Воскресенье'
-    date_pattern = r'[0-9]{2}.[0-9]{2}.[0-9]{4}'
+    date_pattern = r'[0-9]{2}\.[0-9]{2}\.[0-9]{4}'
     time_pattern = r'[0-9]{2}:[0-9]{2}'
     day_for_training = re.search(day_of_week_pattern, message.text)
     date_for_training = re.search(date_pattern, message.text)
@@ -137,15 +139,49 @@ def get_user_text(message):
     df_tr = pd.read_excel('trainings.xlsx')  # чтение тренировок из Excel заполняются менеджером
     df_record = pd.read_excel('records.xlsx')  # чтение записей на тренировки из Excel
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    if message.text in ['Общая информация', 'Время работы клуба', 'Связаться с менеджером']:
+    if _user_name_to_manager:
+        phone_number_pattern = r'0[0-9]{9}'
+        phone_number = re.search(phone_number_pattern, message.text)
+        if phone_number:
+            restart = '/start'
+            markup.add(restart)
+            mess = messages.PHONE_NUMBER_MESSAGE
+            mess_to_manager = f"Клиент - {phone_number.group()}!\nЗапрос на личную переписку!"
+            bot.send_message(message.chat.id, mess, reply_markup=markup)
+            bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
+            bot.send_message(chat_id=_manager_id, text=mess_to_manager, parse_mode='html')
+            del _user_name_to_manager[message.chat.id]
+        else:
+            mess = messages.INCORRECT_PHONE_NUMBER_MESSAGE
+            bot.send_message(message.chat.id, mess, parse_mode='html')
+
+    elif message.text in ['Общая информация', 'Время работы клуба']:
         restart = '/start'
         markup.add(restart)
         bot.send_message(message.chat.id, messages.MAIN_MENU_MESSAGE[message.text], reply_markup=markup)
         bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
 
+    elif message.text == 'Связаться с менеджером':
+
+        if not message.from_user.username:
+            restart = '/start'
+            markup.add(restart)
+            _user_name_to_manager[message.chat.id] = message.from_user.username
+            mess = messages.USER_PHONE_NUMBER_MESSAGE
+            bot.send_message(message.chat.id, text=mess, parse_mode='html')
+            bot.send_message(message.chat.id, messages.MAIN_MENU_MESSAGE[message.text], reply_markup=markup)
+        else:
+            restart = '/start'
+            markup.add(restart)
+            mess = f'Клиент - @{message.from_user.username}!\nЗапрос на личную переписку!'
+            bot.send_message(message.chat.id, messages.MAIN_MENU_MESSAGE[message.text], reply_markup=markup)
+            bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
+            bot.send_message(chat_id=_manager_id, text=mess, parse_mode='html')
+
     elif message.text == 'Мои записи':
         restart = '/start'
         markup.add(restart)
+        record = False
         for i in df_record.itertuples():
             today = datetime.datetime.now()
             date_of_records = datetime.datetime.strptime(i.date, '%d.%m.%Y')
@@ -154,9 +190,12 @@ def get_user_text(message):
                     for x in df_tr.itertuples():
                         if x.id_workout == i.id_workout:
                             mess = f'Тренировка - {x.title}\nДень - {i.date}\nВремя - {i.time}'
-                            bot.send_message(message.chat.id, mess, reply_markup=markup)
+                            bot.send_message(message.chat.id, mess)
+                            record = True
                             break
-        bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE)
+        if not record:
+            bot.send_message(message.chat.id, "У вас нет записей!")
+        bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, reply_markup=markup)
 
     elif message.text == 'Записаться на тренировку':  # Меню с перечнем доступных тренировок
         mess = messages.CHOICE_TRAININGS_MESSAGE
@@ -314,7 +353,7 @@ def run_bot():
 
 def run_push_message():
     schedule.every().day.at("06:00").do(push_messages)
-    schedule.every().day.at("12:25").do(push_messages_workout_reminder)
+    schedule.every().day.at("12:00").do(push_messages_workout_reminder)
     while True:
         schedule.run_pending()
         time.sleep(1)
