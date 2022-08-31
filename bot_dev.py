@@ -82,17 +82,16 @@ def push_messages_workout_reminder():  # сообщение о записи на
     df_record = pd.read_excel('records.xlsx')
     df_tr = pd.read_excel('trainings.xlsx')
     tomorrow = (datetime.date.today() + (timedelta(1))).strftime('%d.%m.%Y')
-    mess_0 = 'Добрый день!\n\nХотим напомнить, что завтра Вы записаны на тренировку:'
+    mess_0 = 'Добрый день!\nХотим напомнить, что завтра Вы записаны на тренировку:'
+    id_push_mass = set(i.user_id for i in df_record.itertuples() if i.date == tomorrow)
+    for i in id_push_mass:
+        bot.send_message(chat_id=i, text=mess_0)
     for i in df_record.itertuples():
         if i.date == tomorrow:
-            if mess_0:
-                bot.send_message(chat_id=i.user_id, text=mess_0)
-                mess_0 = None
             for y in df_tr.itertuples():
                 if i.id_workout == y.id_workout:
-                    mess = f'Тренировка - {y.title}\nВремя - {i.time}'
+                    mess = f'Тренировка - {y.title}\nВремя - {y.time}'
                     bot.send_message(chat_id=i.user_id, text=mess)
-                    break
 
 
 def date_of_training(re_day):  # просчет всех выбранных дат до конца месяца
@@ -101,7 +100,7 @@ def date_of_training(re_day):  # просчет всех выбранных да
     dates = []
     days = {'Понедельник': 0, 'Вторник': 1, 'Среда': 2, 'Четверг': 3, 'Пятница': 4, 'Суббота': 5, 'Воскресенье': 6}
     for i in obj.itermonthdates(today.year, today.month):
-        if today <= i and i.month == today.month:
+        if today <= i: # and i.month == today.month:
             day = calendar.weekday(i.year, i.month, i.day)
             if day == days[re_day.group()]:
                 dates.append(i)
@@ -139,7 +138,7 @@ def get_user_text(message):
     df_tr = pd.read_excel('trainings.xlsx')  # чтение тренировок из Excel заполняются менеджером
     df_record = pd.read_excel('records.xlsx')  # чтение записей на тренировки из Excel
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    if _user_name_to_manager:
+    if message.from_user.id in _user_name_to_manager:
         phone_number_pattern = r'0[0-9]{9}'
         phone_number = re.search(phone_number_pattern, message.text)
         if phone_number:
@@ -182,6 +181,8 @@ def get_user_text(message):
         restart = '/start'
         markup.add(restart)
         record = False
+        mess = 'Ваши записи:'
+        bot.send_message(chat_id=message.chat.id, text=mess, parse_mode='html')
         for i in df_record.itertuples():
             today = datetime.datetime.now()
             date_of_records = datetime.datetime.strptime(i.date, '%d.%m.%Y')
@@ -189,12 +190,13 @@ def get_user_text(message):
                 if i.user_id == message.chat.id:
                     for x in df_tr.itertuples():
                         if x.id_workout == i.id_workout:
-                            mess = f'Тренировка - {x.title}\nДень - {i.date}\nВремя - {i.time}'
+                            mess = f'Тренировка - {x.title}\nДень - {i.date}\nВремя - {x.time}'
                             bot.send_message(message.chat.id, mess)
                             record = True
                             break
         if not record:
             bot.send_message(message.chat.id, "У вас нет записей!")
+        bot.send_message(chat_id=message.chat.id, text=mess, parse_mode='html')
         bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, reply_markup=markup)
 
     elif message.text == 'Записаться на тренировку':  # Меню с перечнем доступных тренировок
@@ -235,14 +237,14 @@ def get_user_text(message):
                 for y in df_record.itertuples():
                     if y.user_id == message.chat.id and \
                             y.id_workout == _trainings_to_records[user_id_to_dict]['id_training'] and \
-                            y.time == _trainings_to_records[user_id_to_dict]['time'] and \
                             y.date == i.strftime("%d.%m.%Y"):
+                        print("OK_1")
                         signed_up_people += 1
                         record = True
-                    if y.user_id == message.chat.id and \
-                            y.time == _trainings_to_records[user_id_to_dict]['time'] and \
-                            y.date == i.strftime("%d.%m.%Y"):
-                        record = True
+                    # if y.user_id == message.chat.id and \
+                    #         y.date == i.strftime("%d.%m.%Y"):
+                    #     print("OK_2")
+                    #     record = True
             if record:
                 restart = '/start'
                 mess = messages.YOU_ARE_ALREADY_REGISTERED_MESSAGE
@@ -272,7 +274,7 @@ def get_user_text(message):
         data_record = ({'user_id': message.chat.id,
                         'id_workout': _trainings_to_records[user_id_to_dict]['id_training'],  # !!!!!Падает Бот!!!!!!
                         'date': _trainings_to_records[user_id_to_dict]["date"],
-                        'time': _trainings_to_records[user_id_to_dict]["time"]
+                        # 'time': _trainings_to_records[user_id_to_dict]["time"]
                         })
         file_records = pd.read_excel('records.xlsx')
         df = pd.DataFrame(file_records)
@@ -353,7 +355,7 @@ def run_bot():
 
 def run_push_message():
     schedule.every().day.at("06:00").do(push_messages)
-    schedule.every().day.at("12:00").do(push_messages_workout_reminder)
+    schedule.every().day.at("11:11").do(push_messages_workout_reminder)
     while True:
         schedule.run_pending()
         time.sleep(1)
