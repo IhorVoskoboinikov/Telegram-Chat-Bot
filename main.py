@@ -4,6 +4,7 @@ import time
 import schedule
 import telebot
 import messages
+import pushes
 from telebot import types
 import peewee
 import pandas as pd
@@ -51,7 +52,7 @@ class ClubCards(BaseTable):
 ClubCards.create_table()
 
 
-def user_name(first_name, last_name):  # функция проверки и присвоения имени пользователя
+def get_user_name(first_name, last_name):  # функция проверки и присвоения имени пользователя
     user_name = f'{first_name} {last_name}'
     if not last_name:
         user_name = f'{first_name}'
@@ -70,40 +71,7 @@ def get_user_cards_in_db(user_id):  # функция проверки налич
     return _user_club_cards
 
 
-def push_messages():  # сообщение об окончании абонемента за 3 дня до конца
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    contact_the_manager = types.KeyboardButton('Связаться с менеджером')
-    markup.add(contact_the_manager)
-    for clients in ClubCards.select():
-        today = datetime.datetime.now()
-        date_of_end_three_days = datetime.datetime.strptime(clients.date_of_the_end, '%d.%m.%Y')
-        if today.day == (date_of_end_three_days - (timedelta(3))).day:
-            mess = f'{clients.name} {messages.PUSH_MESSAGE_END_OF_THE_CARD_MESSAGE} {clients.date_of_the_end}!'
-            bot.send_message(chat_id=clients.user_id, text=mess, disable_notification=True, reply_markup=markup)
-
-
-def push_messages_workout_reminder():  # сообщение о записи на тренировку на завтра
-    df_record = pd.read_excel('records.xlsx')
-    df_trainings = pd.read_excel('trainings.xlsx')
-    df_trainings_types = pd.read_excel('trainings_types.xlsx')
-    df_coaches = pd.read_excel('coaches.xlsx')
-    tomorrow = (datetime.date.today() + (timedelta(1))).strftime('%d.%m.%Y')
-    mess_0 = messages.WORKOUT_REMINDER_MESSAGE
-    id_push_mass = set(i.user_id for i in df_record.itertuples() if i.date == tomorrow)
-    for i in id_push_mass:
-        bot.send_message(chat_id=i, text=mess_0)
-    for i in df_record.itertuples():
-        if i.date == tomorrow:
-            for y in df_trainings.itertuples():
-                if i.training_id == y.training_id:
-                    for z in df_trainings_types.itertuples():
-                        if y.training_type_id == z.training_type_id:
-                            mess = messages.get_a_training_session_message(title=z.title, time=y.time)
-                            bot.send_message(chat_id=i.user_id, text=mess)
-                            break
-
-
-def date_of_training(re_day):  # просчет всех выбранных дат до конца месяца
+def get_all_dates_before_the_end_of_the_month(re_day):  # просчет всех выбранных дат до конца месяца
     obj = calendar.Calendar()
     today = datetime.date.today()
     dates = []
@@ -118,7 +86,7 @@ def date_of_training(re_day):  # просчет всех выбранных да
 
 @bot.message_handler(commands=['start'])  # старт работы бота
 def start(message):
-    _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
+    _user_name = get_user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
     _user_club_cards = get_user_cards_in_db(user_id=message.from_user.id)
     mess = f'{_user_name}, {messages.GREETING_MESSAGE}'
     sticker = open('images/hello_sticker.webp', 'rb')
@@ -141,7 +109,7 @@ def get_user_text(message):
     day_for_training = re.search(day_of_week_pattern, message.text)
     date_for_training = re.search(date_pattern, message.text)
     time_for_training = re.search(time_pattern, message.text)
-    _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
+    _user_name = get_user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
     _user_club_cards = get_user_cards_in_db(user_id=message.from_user.id)
     df = pd.read_excel('base_cards.xlsx')  # чтение абонементов из Excel заполняются менеджером
     df_trainings = pd.read_excel('trainings.xlsx')  # чтение тренировок из Excel заполняются менеджером
@@ -274,7 +242,7 @@ def get_user_text(message):
                     i.day_of_the_week == _trainings_to_records[user_id_to_dict]['day'] and \
                     i.time.strftime('%H:%M') == _trainings_to_records[user_id_to_dict]['time']:
                 _trainings_to_records[user_id_to_dict]['training_id'] = i.training_id
-        available_dates = date_of_training(re_day=day_for_training)
+        available_dates = get_all_dates_before_the_end_of_the_month(re_day=day_for_training)
         if not available_dates:  # проверяем доступные тренировки до конца Python календаря
             mess = messages.RECORD_FULL_MESSAGE
             for y in _names_of_trainings_set:
@@ -440,8 +408,8 @@ def run_bot():
 
 
 def run_push_message():
-    schedule.every().day.at("06:00").do(push_messages)
-    schedule.every().day.at("12:00").do(push_messages_workout_reminder)
+    schedule.every().day.at("06:00").do(pushes.get_push_message_about_the_end_of_the_subscription)
+    schedule.every().day.at("12:00").do(pushes.get_push_messages_workout_reminder)
     while True:
         schedule.run_pending()
         time.sleep(1)
