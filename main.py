@@ -81,9 +81,9 @@ def push_messages():  # сообщение об окончании абонем�
 
 def push_messages_workout_reminder():  # сообщение о записи на тренировку на завтра
     df_record = pd.read_excel('records.xlsx')
-    df_tr = pd.read_excel('trainings.xlsx')
-    df_tr = pd.read_excel('trainings_types.xlsx')
-    df_tr = pd.read_excel('coaches.xlsx')
+    df_trainings = pd.read_excel('trainings.xlsx')
+    df_trainings_types = pd.read_excel('trainings_types.xlsx')
+    df_coaches = pd.read_excel('coaches.xlsx')
     tomorrow = (datetime.date.today() + (timedelta(1))).strftime('%d.%m.%Y')
     mess_0 = 'Добрый день!\nХотим напомнить, что завтра Вы записаны на тренировку:'
     id_push_mass = set(i.user_id for i in df_record.itertuples() if i.date == tomorrow)
@@ -91,10 +91,13 @@ def push_messages_workout_reminder():  # сообщение о записи на
         bot.send_message(chat_id=i, text=mess_0)
     for i in df_record.itertuples():
         if i.date == tomorrow:
-            for y in df_tr.itertuples():
-                if i.id_workout == y.id_workout:
-                    mess = f'Тренировка - {y.title}\nВремя - {y.time}'
-                    bot.send_message(chat_id=i.user_id, text=mess)
+            for y in df_trainings.itertuples():
+                if i.training_id == y.training_id:
+                    for z in df_trainings_types.itertuples():
+                        if y.training_type_id == z.training_type_id:
+                            mess = f'Тренировка - {z.title}\nВремя - {y.time.strftime("%H:%M")}'
+                            bot.send_message(chat_id=i.user_id, text=mess)
+                            break
 
 
 def date_of_training(re_day):  # просчет всех выбранных дат до конца месяца
@@ -177,18 +180,21 @@ def get_user_text(message):
         bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
         print(_name_of_coaches_set)
 
-    elif message.text in _name_of_coaches_set:
+    elif message.text in _name_of_coaches_set:  # вынести все в отдельную функцию
         coach_name = message.text
         coach_id = None
         mess = ''
+        trainings_set = set()
         for i in df_coaches.itertuples():
             if coach_name == i.coach_name:
-                mess += i.description
+                mess += f'{i.description}\n\nПроводит тренировки:\n'
                 coach_id = i.id_coach
-        # for i in df_trainings.itertuples():
-        #     if i.id_coach == coach_id:
-        #         for y in df_training_types.itertuples(): # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+        for y in df_trainings.itertuples():
+            if coach_id == y.id_coach:
+                for z in df_training_types.itertuples():
+                    if z.training_type_id == y.training_type_id:
+                        trainings_set.add(z.title)
+        mess += '\n'.join(trainings_set)
         bot.send_message(message.chat.id, mess, parse_mode='html')
         bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
 
@@ -292,8 +298,13 @@ def get_user_text(message):
             if (max_people - signed_up_people) <= 0:
                 days_for_recording += 1
                 continue
-            training_date = types.KeyboardButton(
-                f'{i.strftime("%d.%m.%Y")}(осталось мест: {max_people - signed_up_people})')
+            for y in df_trainings.itertuples():
+                if y.training_id == _trainings_to_records[user_id_to_dict]['training_id']:
+                    for x in df_coaches.itertuples():
+                        if x.id_coach == y.id_coach:
+                            _trainings_to_records[user_id_to_dict]['coach'] = x.coach_name
+                            training_date = types.KeyboardButton(
+                                f'{i.strftime("%d.%m.%Y")} тренер - {x.coach_name}\n(осталось мест: {max_people - signed_up_people})')
             markup.add(training_date)
         if days_for_recording == len(available_dates):  # Проверка если во все дни полная запись и нет мест!
             restart = '/start'
@@ -350,7 +361,8 @@ def get_user_text(message):
                 df_new.to_excel(writer, index=False)
             mess = f'Вы записались на тренировку - {_trainings_to_records[user_id_to_dict]["training"]}!\n' \
                    f'Ждем вас на тренировку {_trainings_to_records[user_id_to_dict]["date"]} в ' \
-                   f'{_trainings_to_records[user_id_to_dict]["time"]}'
+                   f'{_trainings_to_records[user_id_to_dict]["time"]}\n' \
+                   f'Тренер - {_trainings_to_records[user_id_to_dict]["coach"]}'
             markup.add(restart)
             bot.send_sticker(message.chat.id, sticker)
             bot.send_message(message.chat.id, mess, reply_markup=markup)
@@ -421,7 +433,7 @@ def run_bot():
 
 def run_push_message():
     schedule.every().day.at("06:00").do(push_messages)
-    schedule.every().day.at("11:11").do(push_messages_workout_reminder)
+    schedule.every().day.at("12:00").do(push_messages_workout_reminder)
     while True:
         schedule.run_pending()
         time.sleep(1)
