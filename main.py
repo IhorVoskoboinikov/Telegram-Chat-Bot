@@ -18,15 +18,17 @@ import os
 with open('token.txt', 'r') as token_file:
     TOKEN = token_file.read()
 
+with open('manager_id.txt', 'r') as manager_id_file:
+    _manager_id = int(manager_id_file.read())
+
 bot = telebot.TeleBot(TOKEN)
 database = peewee.SqliteDatabase("clients.db")
-_client_choice = []
+_client_choice = defaultdict(list)
 _club_card_to_save = defaultdict(dict)
 _users_buy_card = {}
 _names_of_trainings_set = set()
 _trainings_by_date = {}
 _trainings_to_records = defaultdict(dict)
-_manager_id = 513981644
 _user_name_to_manager = {}
 _name_of_coaches_set = set()
 
@@ -56,14 +58,15 @@ def user_name(first_name, last_name):  # функция проверки и пр
     return user_name
 
 
-def user_cards_in_db(user_id):  # функция проверки наличия абонементов в базе
+def get_user_cards_in_db(user_id):  # функция проверки наличия абонементов в базе
     _user_club_cards = messages.USER_NO_ACCOUNT_MESSAGE
     for clients in ClubCards.select():
         if user_id == clients.user_id:
-            _user_club_cards = f'У Вас есть действующий абонемент - {clients.title}\n' \
-                               f'Дата покупки: {clients.date_of_buy}\n' \
-                               f'Срок действия до: {clients.date_of_the_end}\n' \
-                               f'Стоимость: {clients.price} грн.'
+            _user_club_cards = messages.get_user_cards_in_db_message(title=clients.title,
+                                                                     date_of_buy=clients.date_of_buy,
+                                                                     date_of_the_end=clients.date_of_the_end,
+                                                                     price=clients.price)
+
     return _user_club_cards
 
 
@@ -75,7 +78,7 @@ def push_messages():  # сообщение об окончании абонем�
         today = datetime.datetime.now()
         date_of_end_three_days = datetime.datetime.strptime(clients.date_of_the_end, '%d.%m.%Y')
         if today.day == (date_of_end_three_days - (timedelta(3))).day:
-            mess = f'{clients.name} {messages.PUSH_MESSAGE_END_OF_THE_CARD} {clients.date_of_the_end}!'
+            mess = f'{clients.name} {messages.PUSH_MESSAGE_END_OF_THE_CARD_MESSAGE} {clients.date_of_the_end}!'
             bot.send_message(chat_id=clients.user_id, text=mess, disable_notification=True, reply_markup=markup)
 
 
@@ -85,7 +88,7 @@ def push_messages_workout_reminder():  # сообщение о записи на
     df_trainings_types = pd.read_excel('trainings_types.xlsx')
     df_coaches = pd.read_excel('coaches.xlsx')
     tomorrow = (datetime.date.today() + (timedelta(1))).strftime('%d.%m.%Y')
-    mess_0 = 'Добрый день!\nХотим напомнить, что завтра Вы записаны на тренировку:'
+    mess_0 = messages.WORKOUT_REMINDER_MESSAGE
     id_push_mass = set(i.user_id for i in df_record.itertuples() if i.date == tomorrow)
     for i in id_push_mass:
         bot.send_message(chat_id=i, text=mess_0)
@@ -95,7 +98,7 @@ def push_messages_workout_reminder():  # сообщение о записи на
                 if i.training_id == y.training_id:
                     for z in df_trainings_types.itertuples():
                         if y.training_type_id == z.training_type_id:
-                            mess = f'Тренировка - {z.title}\nВремя - {y.time.strftime("%H:%M")}'
+                            mess = messages.get_a_training_session_message(title=z.title, time=y.time)
                             bot.send_message(chat_id=i.user_id, text=mess)
                             break
 
@@ -116,7 +119,7 @@ def date_of_training(re_day):  # просчет всех выбранных да
 @bot.message_handler(commands=['start'])  # старт работы бота
 def start(message):
     _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
-    _user_club_cards = user_cards_in_db(user_id=message.from_user.id)
+    _user_club_cards = get_user_cards_in_db(user_id=message.from_user.id)
     mess = f'{_user_name}, {messages.GREETING_MESSAGE}'
     sticker = open('images/hello_sticker.webp', 'rb')
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)  # создаем кнопки главного меню
@@ -139,13 +142,13 @@ def get_user_text(message):
     date_for_training = re.search(date_pattern, message.text)
     time_for_training = re.search(time_pattern, message.text)
     _user_name = user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
-    _user_club_cards = user_cards_in_db(user_id=message.from_user.id)
+    _user_club_cards = get_user_cards_in_db(user_id=message.from_user.id)
     df = pd.read_excel('base_cards.xlsx')  # чтение абонементов из Excel заполняются менеджером
     df_trainings = pd.read_excel('trainings.xlsx')  # чтение тренировок из Excel заполняются менеджером
     df_record = pd.read_excel('records.xlsx')  # чтение записей на тренировки из Excel
     df_training_types = pd.read_excel('trainings_types.xlsx')  # чтение типов тренировок из Excel
     df_coaches = pd.read_excel('coaches.xlsx')  # чтение тренеров из Excel
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     if message.from_user.id in _user_name_to_manager:
         phone_number_pattern = r'0[0-9]{9}'
         phone_number = re.search(phone_number_pattern, message.text)
@@ -153,7 +156,7 @@ def get_user_text(message):
             restart = '/start'
             markup.add(restart)
             mess = messages.PHONE_NUMBER_MESSAGE
-            mess_to_manager = f"Клиент - {phone_number.group()}!\nЗапрос на личную переписку!"
+            mess_to_manager = messages.get_a_request_to_the_manager(phone_number=phone_number.group())
             bot.send_message(message.chat.id, mess, reply_markup=markup)
             bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
             bot.send_message(chat_id=_manager_id, text=mess_to_manager, parse_mode='html')
@@ -178,7 +181,6 @@ def get_user_text(message):
         markup.add(restart)
         bot.send_message(message.chat.id, messages.MAIN_MENU_MESSAGE[message.text], reply_markup=markup)
         bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
-        print(_name_of_coaches_set)
 
     elif message.text in _name_of_coaches_set:  # вынести все в отдельную функцию
         coach_name = message.text
@@ -187,7 +189,7 @@ def get_user_text(message):
         trainings_set = set()
         for i in df_coaches.itertuples():
             if coach_name == i.coach_name:
-                mess += f'{i.description}\n\nПроводит тренировки:\n'
+                mess += f'{i.description}\n\n{messages.DOES_TRAINING_MESSAGE}\n'
                 coach_id = i.id_coach
         for y in df_trainings.itertuples():
             if coach_id == y.id_coach:
@@ -210,7 +212,7 @@ def get_user_text(message):
         else:
             restart = '/start'
             markup.add(restart)
-            mess = f'Клиент - @{message.from_user.username}!\nЗапрос на личную переписку!'
+            mess = messages.request_for_personal_correspondence_message(message=message.from_user.username)
             bot.send_message(message.chat.id, messages.MAIN_MENU_MESSAGE[message.text], reply_markup=markup)
             bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
             bot.send_message(chat_id=_manager_id, text=mess, parse_mode='html')
@@ -218,7 +220,7 @@ def get_user_text(message):
         restart = '/start'
         markup.add(restart)
         record = False
-        mess_0 = 'Ваши записи:'
+        mess_0 = messages.YOUR_RECORDS_MESSAGE
         for i in df_record.itertuples():
             today = datetime.datetime.now()
             date_of_records = datetime.datetime.strptime(i.date, '%d.%m.%Y')
@@ -228,8 +230,7 @@ def get_user_text(message):
                         if i.training_id == y.training_id:
                             for z in df_training_types.itertuples():
                                 if z.training_type_id == y.training_type_id:
-                                    mess = f'Тренировка - {z.title}\nДень - {i.date}\n' \
-                                           f'Время - {y.time.strftime("%H:%M")}'
+                                    mess = messages.get_my_records_message(title=z.title, date=i.date, time=y.time)
                                     if mess_0:
                                         bot.send_message(chat_id=message.chat.id, text=mess_0, parse_mode='html')
                                         mess_0 = None
@@ -247,6 +248,9 @@ def get_user_text(message):
             trainings = types.KeyboardButton(y)
             markup.add(trainings)
         bot.send_message(message.chat.id, mess, reply_markup=markup)
+        restart = '/start'
+        markup.add(restart)
+        bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, reply_markup=markup)
     elif message.text in _names_of_trainings_set:  # Меню с днем недели + время тренировки
         for i in df_training_types.itertuples():
             if i.title == message.text:
@@ -254,8 +258,8 @@ def get_user_text(message):
         _trainings_to_records[user_id_to_dict]['training'] = message.text
         for i in df_trainings.itertuples():
             if i.training_type_id == _trainings_to_records[user_id_to_dict]['training_type_id']:
-                training = types.KeyboardButton(f'{i.day_of_the_week} '
-                                                f'в {i.time.strftime("%H:%M")}')
+                button = messages.get_datetime_button_message(day_of_the_week=i.day_of_the_week, time=i.time)
+                training = types.KeyboardButton(button)
                 markup.add(training)
         mess = messages.CHOICE_TRAININGS_MESSAGE_2
         bot.send_message(message.chat.id, mess, reply_markup=markup)
@@ -303,8 +307,11 @@ def get_user_text(message):
                     for x in df_coaches.itertuples():
                         if x.id_coach == y.id_coach:
                             _trainings_to_records[user_id_to_dict]['coach'] = x.coach_name
-                            training_date = types.KeyboardButton(
-                                f'{i.strftime("%d.%m.%Y")} тренер - {x.coach_name}\n(осталось мест: {max_people - signed_up_people})')
+                            free_places = max_people - signed_up_people
+                            button = messages.get_button_date_coach_number_people_message(date=i,
+                                                                                          coach=x.coach_name,
+                                                                                          people=free_places)
+                            training_date = types.KeyboardButton(button)
             markup.add(training_date)
         if days_for_recording == len(available_dates):  # Проверка если во все дни полная запись и нет мест!
             restart = '/start'
@@ -359,24 +366,26 @@ def get_user_text(message):
             with ExcelWriter('records.xlsx', mode='a' if os.path.exists('records.xlsx') else 'w',
                              if_sheet_exists='replace') as writer:
                 df_new.to_excel(writer, index=False)
-            mess = f'Вы записались на тренировку - {_trainings_to_records[user_id_to_dict]["training"]}!\n' \
-                   f'Ждем вас на тренировку {_trainings_to_records[user_id_to_dict]["date"]} в ' \
-                   f'{_trainings_to_records[user_id_to_dict]["time"]}\n' \
-                   f'Тренер - {_trainings_to_records[user_id_to_dict]["coach"]}'
+            mess = messages.get_training_session_message(training=_trainings_to_records[user_id_to_dict]["training"],
+                                                         date=_trainings_to_records[user_id_to_dict]["date"],
+                                                         time=_trainings_to_records[user_id_to_dict]["time"],
+                                                         coach=_trainings_to_records[user_id_to_dict]["coach"])
             markup.add(restart)
             bot.send_sticker(message.chat.id, sticker)
             bot.send_message(message.chat.id, mess, reply_markup=markup)
             bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, reply_markup=markup)
-            print(_trainings_to_records)
     elif message.text == 'Клубные карты':  # меню клубных карт для покупки клиента
-        _client_choice.clear()
         mess = f"{_user_club_cards}\n\n{messages.CHOICE_CLUB_CARD_MESSAGE}"
         for i in df.itertuples():
-            club_cards_from_manager = types.KeyboardButton(f"{i.title}: Срок-{i.validity} дней, цена-{i.price} грн")
+            button = messages.get_club_cards_message(title=i.title, validity=i.validity, price=i.price)
+            club_cards_from_manager = types.KeyboardButton(button)
             markup.add(club_cards_from_manager)
-            _client_choice.append(f"{i.title}: Срок-{i.validity} дней, цена-{i.price} грн")
+            _client_choice[user_id_to_dict].append(button)
         bot.send_message(message.chat.id, mess, reply_markup=markup)
-    elif message.text in _client_choice:  # подтверждение о покупке абонемента
+        restart = '/start'
+        markup.add(restart)
+        bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, reply_markup=markup)
+    elif message.text in _client_choice[user_id_to_dict]:  # подтверждение о покупке абонемента
         _users_buy_card[message.from_user.id] = message.text
         restart = '/start'
         i_agree = 'Купить абонемент'
@@ -404,12 +413,11 @@ def get_user_text(message):
                 _club_card_to_save[user_id_to_dict]['price'] = i.price
                 _club_card_to_save[user_id_to_dict]['date_of_buy'] = date.strftime("%d.%m.%Y")
                 _club_card_to_save[user_id_to_dict]['date_of_the_end'] = date_end.strftime("%d.%m.%Y")
-        mess = f'{_user_name}, спасибо за Ваш выбор!\n' \
-               f'Ваш абонемент - {_club_card_to_save[user_id_to_dict]["title"]}\n' \
-               f'Стоимость - {_club_card_to_save[user_id_to_dict]["price"]} грн.\n' \
-               f'Дата покупки - {_club_card_to_save[user_id_to_dict]["date_of_buy"]}\n' \
-               f'Действует до - {_club_card_to_save[user_id_to_dict]["date_of_the_end"]}\n\n' \
-               f'Для перехода в главное меню нажмите кнопку start!'
+        mess = messages.get_a_purchased_club_card(title=_club_card_to_save[user_id_to_dict]["title"],
+                                                  price=_club_card_to_save[user_id_to_dict]["price"],
+                                                  date_of_buy=_club_card_to_save[user_id_to_dict]["date_of_buy"],
+                                                  date_of_the_end=_club_card_to_save[user_id_to_dict]["date_of_the_end"]
+                                                  )
         bot.send_sticker(message.chat.id, sticker)
         bot.send_message(message.chat.id, mess, reply_markup=markup)
         client_in_db = ClubCards.insert_many(
@@ -421,10 +429,10 @@ def get_user_text(message):
                   f'Абонемент: {clients.title} | Срок: {clients.validity} | '
                   f'Стоимость:{clients.price} | Дата покупки: {clients.date_of_buy} | '
                   f'Действует до: {clients.date_of_the_end}')
-        else:
-            restart = '/start'
-            markup.add(restart)
-            bot.send_message(message.chat.id, messages.CHOICE_ERROR_MESSAGE, reply_markup=markup)
+    else:
+        restart = '/start'
+        markup.add(restart)
+        bot.send_message(message.chat.id, messages.CHOICE_ERROR_MESSAGE, reply_markup=markup)
 
 
 def run_bot():
