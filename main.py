@@ -5,6 +5,7 @@ import schedule
 import telebot
 import messages
 import pushes
+import config
 from telebot import types
 import peewee
 import pandas as pd
@@ -16,14 +17,14 @@ import calendar
 from pandas.io.excel import ExcelWriter
 import os
 
-with open('token.txt', 'r') as token_file:
+with open(config.TOKEN_FILE_PATH, 'r') as token_file:
     TOKEN = token_file.read()
 
-with open('manager_id.txt', 'r') as manager_id_file:
+with open(config.ID_MANAGER_FILE_PATH, 'r') as manager_id_file:
     _manager_id = int(manager_id_file.read())
 
 bot = telebot.TeleBot(TOKEN)
-database = peewee.SqliteDatabase("clients.db")
+database = peewee.SqliteDatabase(config.DB_FILE_PATH)
 _client_choice = defaultdict(list)
 _club_card_to_save = defaultdict(dict)
 _users_buy_card = {}
@@ -89,7 +90,7 @@ def start(message):
     _user_name = get_user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
     _user_club_cards = get_user_cards_in_db(user_id=message.from_user.id)
     mess = f'{_user_name}, {messages.GREETING_MESSAGE}'
-    sticker = open('images/hello_sticker.webp', 'rb')
+    sticker = open(config.HELLO_STICKER_FILE_PATH, 'rb')
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)  # создаем кнопки главного меню
     main_menu = ['Общая информация', 'Клубные карты', 'Записаться на тренировку', 'Мои записи',
                  'Наши тренеры', 'Связаться с менеджером']
@@ -111,11 +112,12 @@ def get_user_text(message):
     time_for_training = re.search(time_pattern, message.text)
     _user_name = get_user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
     _user_club_cards = get_user_cards_in_db(user_id=message.from_user.id)
-    df = pd.read_excel('base_cards.xlsx')  # чтение абонементов из Excel заполняются менеджером
-    df_trainings = pd.read_excel('trainings.xlsx')  # чтение тренировок из Excel заполняются менеджером
-    df_record = pd.read_excel('records.xlsx')  # чтение записей на тренировки из Excel
-    df_training_types = pd.read_excel('trainings_types.xlsx')  # чтение типов тренировок из Excel
-    df_coaches = pd.read_excel('coaches.xlsx')  # чтение тренеров из Excel
+    df = pd.read_excel(config.BASE_CLUB_CARDS_FILE_PATH)  # чтение абонементов из Excel заполняются менеджером
+    df_trainings = pd.read_excel(
+        config.TRAINING_SCHEDULE_FILE_PATH)  # чтение тренировок из Excel заполняются менеджером
+    df_record = pd.read_excel(config.SIGN_UP_FOR_TRAININGS_FILE_PATH)  # чтение записей на тренировки из Excel
+    df_training_types = pd.read_excel(config.WORKOUT_TYPES_FILE_PATH)  # чтение типов тренировок из Excel
+    df_coaches = pd.read_excel(config.COACHES_FILE_PATH)  # чтение тренеров из Excel
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     if message.from_user.id in _user_name_to_manager:
         phone_number_pattern = r'0[0-9]{9}'
@@ -207,7 +209,7 @@ def get_user_text(message):
                                     break
                             break
         if not record:
-            bot.send_message(message.chat.id, "У вас нет записей!")
+            bot.send_message(message.chat.id, messages.YOU_HAVE_NO_ENTRY_MESSAGE)
         bot.send_message(message.chat.id, messages.GO_TO_MAIN_MENU_MESSAGE, reply_markup=markup)
     elif message.text == 'Записаться на тренировку':  # Меню с перечнем доступных тренировок
         mess = messages.CHOICE_TRAININGS_MESSAGE
@@ -297,7 +299,7 @@ def get_user_text(message):
         record = False
         date_to_dict = re.search(date_pattern, message.text)
         restart = '/start'
-        sticker = open('images/training_sticker.webp', 'rb')
+        sticker = open(config.TRAINING_STICKER_RECORDS_FILE_PATH, 'rb')
         _trainings_to_records[user_id_to_dict]['date'] = date_to_dict.group()
         for i in df_record.itertuples():  # проверка записи на одну и туже тренировку
             if i.user_id == message.chat.id and \
@@ -331,7 +333,8 @@ def get_user_text(message):
             file_records = pd.read_excel('records.xlsx')
             df = pd.DataFrame(file_records)
             df_new = df.append(data_record, ignore_index=True)
-            with ExcelWriter('records.xlsx', mode='a' if os.path.exists('records.xlsx') else 'w',
+            with ExcelWriter(config.SIGN_UP_FOR_TRAININGS_FILE_PATH,
+                             mode='a' if os.path.exists(config.SIGN_UP_FOR_TRAININGS_FILE_PATH) else 'w',
                              if_sheet_exists='replace') as writer:
                 df_new.to_excel(writer, index=False)
             mess = messages.get_training_session_message(training=_trainings_to_records[user_id_to_dict]["training"],
@@ -358,15 +361,15 @@ def get_user_text(message):
         restart = '/start'
         i_agree = 'Купить абонемент'
         markup.add(restart, i_agree)
-        mess = f'{_user_name}, {messages.CONFIRMATION_CLUB_CARD_IN_DB_MESSAGE}'
+        mess = messages.get_confirmation_club_card_in_db_message(name=_user_name)
         if _user_club_cards == messages.USER_NO_ACCOUNT_MESSAGE:
-            mess = f'{_user_name}, {messages.CONFIRMATION_CLUB_CARD_OUT_IN_DB_MESSAGE}'
+            mess = messages.get_confirmation_club_card_out_in_db_message(name=_user_name)
         bot.send_message(message.chat.id, mess, reply_markup=markup)
     elif message.text == 'Купить абонемент':
         user_id_to_dict = str(message.from_user.id)
         restart = '/start'
         markup.add(restart)
-        sticker = open('images/final_sticker.webp', 'rb')
+        sticker = open(config.FINAL_CLUB_CARDS_STICKER_FILE_PATH, 'rb')
         for clients in ClubCards.select():  # удаление действующих абонементов из базы
             if message.from_user.id == clients.user_id:
                 clients.delete_instance()
@@ -381,7 +384,8 @@ def get_user_text(message):
                 _club_card_to_save[user_id_to_dict]['price'] = i.price
                 _club_card_to_save[user_id_to_dict]['date_of_buy'] = date.strftime("%d.%m.%Y")
                 _club_card_to_save[user_id_to_dict]['date_of_the_end'] = date_end.strftime("%d.%m.%Y")
-        mess = messages.get_a_purchased_club_card(title=_club_card_to_save[user_id_to_dict]["title"],
+        mess = messages.get_a_purchased_club_card(name=_club_card_to_save[user_id_to_dict]['name'],
+                                                  title=_club_card_to_save[user_id_to_dict]["title"],
                                                   price=_club_card_to_save[user_id_to_dict]["price"],
                                                   date_of_buy=_club_card_to_save[user_id_to_dict]["date_of_buy"],
                                                   date_of_the_end=_club_card_to_save[user_id_to_dict]["date_of_the_end"]
@@ -393,10 +397,10 @@ def get_user_text(message):
         del _users_buy_card[message.from_user.id]
         del _club_card_to_save[user_id_to_dict]
         for clients in ClubCards.select():  # чтение данных из базы
-            print(f'ID: {clients.user_id} | Имя: {clients.name} | '
-                  f'Абонемент: {clients.title} | Срок: {clients.validity} | '
-                  f'Стоимость:{clients.price} | Дата покупки: {clients.date_of_buy} | '
-                  f'Действует до: {clients.date_of_the_end}')
+            print(messages.get_data_from_db(user_id=clients.user_id, name=clients.name, title=clients.title,
+                                            validity=clients.validity, price=clients.price,
+                                            date_of_buy=clients.date_of_buy,
+                                            date_of_the_end=clients.date_of_the_end))
     else:
         restart = '/start'
         markup.add(restart)
@@ -408,8 +412,9 @@ def run_bot():
 
 
 def run_push_message():
-    schedule.every().day.at("06:00").do(pushes.get_push_message_about_the_end_of_the_subscription)
-    schedule.every().day.at("12:00").do(pushes.get_push_messages_workout_reminder)
+    schedule.every().day.at(config.TIME_PUSH_MESSAGE_END_CARDS).do(
+        pushes.get_push_message_about_the_end_of_the_subscription)
+    schedule.every().day.at(config.TIME_PUSH_MESSAGE_RECORDS_TRAINING).do(pushes.get_push_messages_workout_reminder)
     while True:
         schedule.run_pending()
         time.sleep(1)
