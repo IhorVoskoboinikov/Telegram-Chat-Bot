@@ -62,6 +62,22 @@ def get_a_request_to_the_manager(phone_number):
     return mess
 
 
+def get_confirmation_club_card_in_db_message(name):
+    mess = f'{name}, {CONFIRMATION_CLUB_CARD_IN_DB_MESSAGE}'
+    return mess
+
+
+def get_confirmation_club_card_out_in_db_message(name):
+    mess = f'{name}, {CONFIRMATION_CLUB_CARD_OUT_IN_DB_MESSAGE}'
+    return mess
+
+
+def get_data_from_db(user_id, name, title, validity, price, date_of_buy, date_of_the_end):
+    mess = f'ID: {user_id} | Имя: {name} | Абонемент: {title} | Срок: {validity} | Стоимость:{price} | ' \
+           f'Дата покупки: {date_of_buy} | Действует до: {date_of_the_end}'
+    return mess
+
+
 GREETING_MESSAGE = f'привет! \n' \
                    f'Это фитнес клуб "X-GUM"!\n\n' \
                    f'Мы рады что Вы выбрали именно нас для улучшения своей физической формы!\n\n' \
@@ -111,6 +127,7 @@ PUSH_MESSAGE_END_OF_THE_CARD_MESSAGE = ', привет!\n' \
 WORKOUT_REMINDER_MESSAGE = 'Добрый день!\nХотим напомнить, что завтра Вы записаны на тренировку:'
 DOES_TRAINING_MESSAGE = 'Проводит тренировки:'
 YOUR_RECORDS_MESSAGE = 'Ваши записи:'
+YOU_HAVE_NO_ENTRY_MESSAGE = 'У вас нет записей!'
 
 if __name__ == '__main__':
     pass
