@@ -219,7 +219,7 @@ def send_available_training_dates(user_id, user_id_to_dict, record, trainings, m
             markup.add(trainings_name)
         session.bot.send_message(user_id, mess, reply_markup=markup)
 
-    for x in trainings.itertuples():  # проверяем максимальное количество людей
+    for x in trainings.itertuples():  # определяем максимальное количество людей
         if x.training_id == session.trainings_to_records[user_id_to_dict]['training_id']:
             max_people = x.max_people
 
@@ -250,6 +250,15 @@ def send_available_training_dates(user_id, user_id_to_dict, record, trainings, m
                                                                                       people=free_places)
                         training_date = types.KeyboardButton(button)
         markup.add(training_date)
+    checking_if_all_days_are_booked_full_and_there_are_no_seats_available(days_for_recording=days_for_recording,
+                                                                          available_dates=available_dates,
+                                                                          user_id=user_id,
+                                                                          markup=markup,
+                                                                          mess=mess)
+
+
+def checking_if_all_days_are_booked_full_and_there_are_no_seats_available(days_for_recording, available_dates,
+                                                                          user_id, markup, mess):
     if days_for_recording == len(available_dates):  # Проверка если во все дни полная запись и нет мест!
         restart = '/start'
         mess = messages.RECORD_FULL_MESSAGE_2
@@ -265,26 +274,12 @@ def send_available_training_dates(user_id, user_id_to_dict, record, trainings, m
 
 def checking_re_entry_for_training_and_recording(user_id, user_id_to_dict, message,
                                                  markup, records, trainings, date_pattern):
-    record = False
     date_to_dict = re.search(date_pattern, message)
     restart = '/start'
     sticker = open(config.TRAINING_STICKER_RECORDS_FILE_PATH, 'rb')
     session.trainings_to_records[user_id_to_dict]['date'] = date_to_dict.group()
-    for i in records.itertuples():  # проверка записи на одну и туже тренировку
-        if i.user_id == user_id and \
-                i.training_id == session.trainings_to_records[user_id_to_dict]['training_id'] and \
-                i.date == session.trainings_to_records[user_id_to_dict]['date']:
-            record = True
-
-    for i in records.itertuples():  # проверка записи на разные тренировки в одинаковое время/день
-        if i.user_id == user_id and \
-                i.date == session.trainings_to_records[user_id_to_dict]['date']:
-            for y in trainings.itertuples():
-                if y.training_id == i.training_id and \
-                        y.day_of_the_week == session.trainings_to_records[user_id_to_dict]['day'] and \
-                        y.time.strftime('%H:%M') == session.trainings_to_records[user_id_to_dict]['time']:
-                    record = True
-                    break
+    record = get_training_session(user_id=user_id, records=records,
+                                  user_id_to_dict=user_id_to_dict, trainings=trainings)
 
     if record:
         mess = messages.YOU_ARE_ALREADY_REGISTERED_MESSAGE
@@ -314,6 +309,26 @@ def checking_re_entry_for_training_and_recording(user_id, user_id_to_dict, messa
         session.bot.send_sticker(user_id, sticker)
         session.bot.send_message(user_id, mess, reply_markup=markup)
         session.bot.send_message(user_id, messages.GO_TO_MAIN_MENU_MESSAGE, reply_markup=markup)
+
+
+def get_training_session(user_id, records, user_id_to_dict, trainings):
+    record = False
+    for i in records.itertuples():  # проверка записи на одну и туже тренировку
+        if i.user_id == user_id and \
+                i.training_id == session.trainings_to_records[user_id_to_dict]['training_id'] and \
+                i.date == session.trainings_to_records[user_id_to_dict]['date']:
+            record = True
+
+    for i in records.itertuples():  # проверка записи на разные тренировки в одинаковое время/день
+        if i.user_id == user_id and \
+                i.date == session.trainings_to_records[user_id_to_dict]['date']:
+            for y in trainings.itertuples():
+                if y.training_id == i.training_id and \
+                        y.day_of_the_week == session.trainings_to_records[user_id_to_dict]['day'] and \
+                        y.time.strftime('%H:%M') == session.trainings_to_records[user_id_to_dict]['time']:
+                    record = True
+                    break
+    return record
 
 
 def send_list_club_cards(user_id, _user_club_cards, club_cards, user_id_to_dict, markup):
