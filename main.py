@@ -77,9 +77,9 @@ def get_all_dates_before_the_end_of_the_month(re_day):  # просчет все�
 def check_phone_number_for_manager(user_id, message, markup):
     phone_number_pattern = r'0[0-9]{9}'
     phone_number = re.search(phone_number_pattern, message)
+    restart = '/start'
+    markup.add(restart)
     if phone_number:
-        restart = '/start'
-        markup.add(restart)
         mess = messages.PHONE_NUMBER_MESSAGE
         mess_to_manager = messages.get_a_request_to_the_manager(phone_number=phone_number.group())
         session.bot.send_message(user_id, mess, reply_markup=markup)
@@ -88,7 +88,8 @@ def check_phone_number_for_manager(user_id, message, markup):
         del session.user_name_to_manager[user_id]
     else:
         mess = messages.INCORRECT_PHONE_NUMBER_MESSAGE
-        session.bot.send_message(user_id, mess, parse_mode='html')
+        session.bot.send_message(user_id, mess, parse_mode='html', reply_markup=markup)
+        session.bot.send_message(user_id, messages.GO_TO_MAIN_MENU_MESSAGE, parse_mode='html')
 
 
 def send_general_information(markup, user_id, message):
@@ -135,7 +136,7 @@ def request_for_personal_correspondence(username, user_id, message, markup):
         session.user_name_to_manager[user_id] = username
         mess = messages.USER_PHONE_NUMBER_MESSAGE
         session.bot.send_message(user_id, text=mess, parse_mode='html')
-        session.bot.send_message(user_id, messages.MAIN_MENU_MESSAGE[message], reply_markup=markup)
+        session.bot.send_message(user_id, messages.GO_TO_MAIN_MENU_MESSAGE, reply_markup=markup)
     else:
         restart = '/start'
         markup.add(restart)
@@ -386,6 +387,11 @@ def no_valid_answer_options(user_id, markup):
 
 @session.bot.message_handler(commands=['start'])  # старт работы бота
 def start(message):
+    if message.from_user.id in session.user_name_to_manager:
+        del session.user_name_to_manager[message.from_user.id]
+    user_id_to_dict = str(message.from_user.id)
+    if user_id_to_dict in session.trainings_to_records:
+        del session.trainings_to_records[user_id_to_dict]
     _user_name = get_user_name(first_name=message.from_user.first_name, last_name=message.from_user.last_name)
     _user_club_cards = get_user_cards_in_db(user_id=message.from_user.id)
     mess = f'{_user_name}, {messages.GREETING_MESSAGE}'
@@ -417,7 +423,8 @@ def get_user_text(message):
     df_training_types = pd.read_excel(config.WORKOUT_TYPES_FILE_PATH)  # чтение типов тренировок из Excel
     df_coaches = pd.read_excel(config.COACHES_FILE_PATH)  # чтение тренеров из Excel
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    if message.from_user.id in session.user_name_to_manager:
+    if message.from_user.id in session.user_name_to_manager:  # Заполнение №тел если нет user_name в телеграмме
+        print(session.user_name_to_manager)
         check_phone_number_for_manager(user_id=message.chat.id, message=message.text, markup=markup)
 
     elif message.text == 'Общая информация':
