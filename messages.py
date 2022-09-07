@@ -87,6 +87,7 @@ def get_list_of_club_cards(user_cards):
     mess = f"{user_cards}\n\n{CHOICE_CLUB_CARD_MESSAGE}"
     return mess
 
+
 GREETING_MESSAGE = f'привет! \n' \
                    f'Это фитнес клуб "X-GUM"!\n\n' \
                    f'Мы рады что Вы выбрали именно нас для улучшения своей физической формы!\n\n' \
